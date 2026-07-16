@@ -1,0 +1,36 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente e segredos — NUNCA suba isso pro Git
+.env
+.env.*
+!.env.example
+credentials.json
+
+# Sessão do WhatsApp (Baileys)
+auth_info_baileys/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema (macOS e Windows)
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores de código (VS Code, WebStorm, etc.)
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Arquivos de backup e temporários
+*~
+*.tmp
+*.bak
+
+# Pastas de build (caso no futuro você compile algo, ex: TypeScript)
+dist/
+build/
+out/
