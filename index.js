@@ -67,10 +67,9 @@ async function getSheetsClient() {
 }
 
 // ============================================================================
-// NOVAS FUNÇÕES AUXILIARES (JS responsável por identificar cidade)
+// FUNÇÕES AUXILIARES (JS responsável por identificar cidade)
 // ============================================================================
 
-// Identifica menção de cidade na string recebida ignorando acentos e maiúsculas
 function identificarCidade(texto) {
     if (!texto) return null;
     const txtNormalizado = texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -82,13 +81,11 @@ function identificarCidade(texto) {
     return null;
 }
 
-// Vasculha a mensagem atual e o histórico recente para reter a cidade escolhida
 function buscarCidadeNoHistorico(jid, textoUsuario) {
     let cidade = identificarCidade(textoUsuario);
     if (cidade) return cidade;
 
     const historico = historicoConversas.get(jid) || [];
-    // Busca de trás para frente no histórico para pegar a cidade mais recente mencionada
     for (let i = historico.length - 1; i >= 0; i--) {
         if (historico[i].role === 'user') {
             cidade = identificarCidade(historico[i].content);
@@ -99,10 +96,9 @@ function buscarCidadeNoHistorico(jid, textoUsuario) {
 }
 
 // ============================================================================
-// FUNÇÃO ALTERADA: Retorna apenas estrutura JSON e filtra a cidade requerida
+// LÓGICA DE BUSCA DE HORÁRIOS CORRIGIDA (ETAPAS 3, 4 e 5)
 // ============================================================================
 async function obterHorarios(cidadeEscolhida) {
-    // Se não há cidade identificada, retorna um alerta interno para o Grok não oferecer nada
     if (!cidadeEscolhida) {
         return '{"aviso": "[SISTEMA: O JavaScript ainda não identificou a cidade. Não invente horários. Continue conversando e pergunte em qual cidade ela deseja atendimento.]"}';
     }
@@ -112,27 +108,51 @@ async function obterHorarios(cidadeEscolhida) {
         const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${NOME_ABA}!A:F` });
         const rows = res.data.values || [];
 
-        const agendaFiltrada = {};
+        // --- LOGS DE DEPURAÇÃO ADICIONADOS ---
+        console.log(`[DEPURAÇÃO] Quantidade de linhas lidas da planilha: ${rows.length}`);
+        console.log(`[DEPURAÇÃO] Cidade identificada: ${cidadeEscolhida}`);
+        let linhasDaCidade = 0;
+        let horariosLivresEncontrados = 0;
+        // --------------------------------------
 
-        rows.forEach(r => {
-            const dia = r[0]?.trim();
+        const agendaFiltrada = {};
+        
+        // VARIÁVEIS DE ESTADO: Preenchem as lacunas das células mescladas
+        let diaAtual = '';
+        let cidadeAtual = 'Não informada';
+
+        rows.forEach((r, index) => {
+            // Se a linha tem um valor em Dia/Cidade, atualizamos o estado. 
+            // Se vier undefined (célula mesclada nas linhas de baixo), mantemos o valor anterior.
+            if (r[0]?.trim()) diaAtual = r[0].trim();
+            if (r[5]?.trim()) cidadeAtual = r[5].trim();
+
             const hora = r[1]?.trim();
             const status = r[2]?.toLowerCase().trim();
-            const cidadePlanilha = r[5]?.trim() || 'Não informada';
 
-            // JS filtra estritamente por "disponível" e pela cidade detectada
-            if (status === 'disponível' && dia && hora && cidadePlanilha.toLowerCase() === cidadeEscolhida.toLowerCase()) {
-                if (!agendaFiltrada[dia]) agendaFiltrada[dia] = [];
-                agendaFiltrada[dia].push(hora);
+            // Filtragem precisa agora que a mesclagem está contornada
+            if (cidadeAtual.toLowerCase() === cidadeEscolhida.toLowerCase()) {
+                linhasDaCidade++; // Log
+                
+                if (status === 'disponível' && diaAtual && hora) {
+                    horariosLivresEncontrados++; // Log
+                    
+                    if (!agendaFiltrada[diaAtual]) agendaFiltrada[diaAtual] = [];
+                    agendaFiltrada[diaAtual].push(hora);
+                }
             }
         });
 
-        // Retorna alerta via JSON caso a cidade não tenha nenhum horário
+        // --- LOGS DE DEPURAÇÃO PÓS-FILTRO ---
+        console.log(`[DEPURAÇÃO] Linhas pertencentes à cidade ${cidadeEscolhida}: ${linhasDaCidade}`);
+        console.log(`[DEPURAÇÃO] Total de horários livres encontrados: ${horariosLivresEncontrados}`);
+        console.log(`[DEPURAÇÃO] Dados finais enviados para o Grok:`, JSON.stringify(agendaFiltrada));
+        // --------------------------------------
+
         if (Object.keys(agendaFiltrada).length === 0) {
             return JSON.stringify({ aviso: `Não há horários disponíveis na planilha para ${cidadeEscolhida} no momento. Informe isso à cliente.` });
         }
 
-        // Retorna a estrutura (JSON) puramente com os dias e horários livres
         return JSON.stringify(agendaFiltrada, null, 2);
 
     } catch (e) {
@@ -163,13 +183,24 @@ async function salvarAgendamento(dia, hora, procedimento, cliente, cidade, bloco
         const quantidadeBlocos = parseInt(blocos, 10) || 1;
         const linhasParaAtualizar = [];
 
+        // PRÉ-PROCESSAMENTO: Trata células mescladas do "Dia" antes de buscar
+        let diaAtualSheet = '';
+        const linhasTratadas = rows.map((r) => {
+            if (r[0]?.trim()) diaAtualSheet = r[0].trim();
+            return {
+                dia: diaAtualSheet,
+                hora: (r[1] || '').trim(),
+                status: (r[2] || '').trim().toLowerCase()
+            };
+        });
+
         // 1. Validar se TODOS os blocos consecutivos estão disponíveis
         for (let b = 0; b < quantidadeBlocos; b++) {
-            const rowIndex = rows.findIndex((r, idx) =>
+            const rowIndex = linhasTratadas.findIndex((r, idx) =>
                 idx > 0 && 
-                (r[0] || '').trim().toLowerCase() === diaNorm &&
-                (r[1] || '').trim() === horaAtual &&
-                (r[2] || '').trim().toLowerCase() === 'disponível'
+                r.dia.toLowerCase() === diaNorm &&
+                r.hora === horaAtual &&
+                r.status === 'disponível'
             );
 
             if (rowIndex === -1) {
@@ -204,9 +235,7 @@ function extrairTextoDaMensagem(message) {
 }
 
 async function gerarRespostaIA(jid, textoUsuario) {
-    // JS identifica a cidade antes de buscar na planilha
     const cidadeEscolhida = buscarCidadeNoHistorico(jid, textoUsuario);
-    // JS obtém exclusivamente o objeto JSON da cidade
     const listaHorarios = await obterHorarios(cidadeEscolhida);
 
     const promptSistema = `Você é Ceci, assistente virtual da clínica "Estética Marisa Soares Estética e Saúde".
@@ -360,7 +389,6 @@ async function iniciarBot() {
             const txt = extrairTextoDaMensagem(msg.message);
             if (!txt || !txt.trim()) return;
 
-            // Lógica de Debounce (Espera 20 segundos)
             if (messageTimers.has(jid)) clearTimeout(messageTimers.get(jid));
             if (!messageQueues.has(jid)) messageQueues.set(jid, []);
             messageQueues.get(jid).push(txt);
@@ -395,7 +423,7 @@ async function iniciarBot() {
                 atualizarHistorico(jid, "assistant", resposta);
                 await sock.sendMessage(jid, { text: resposta });
 
-            }, 20000); // 20 segundos
+            }, 20000); 
 
             messageTimers.set(jid, timer);
 
