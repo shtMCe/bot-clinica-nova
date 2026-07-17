@@ -1,22 +1,52 @@
 # 🤖 Bot de Agendamento - Clínica Marisa Soares
 
-Este é o sistema de atendimento inteligente via WhatsApp da Clínica Marisa Soares. O bot utiliza inteligência artificial para entender as solicitações dos clientes, verificar disponibilidade na agenda (Google Sheets) e realizar agendamentos automaticamente de forma segura e organizada.
+[![Nível](https://img.shields.io/badge/Status-Em_Desenvolvimento-brightgreen)]()
+[![Tecnologia](https://img.shields.io/badge/Node.js-339933?logo=nodedotjs&logoColor=white)]()
+[![IA](https://img.shields.io/badge/Groq-AI-blue)]()
 
-# OBSERVAÇÕES ESSENCIAIS DO PROJETO
+Bem-vindo ao repositório do **Assistente Virtual Inteligente** da Clínica Marisa Soares. Este projeto nasceu da necessidade real de automatizar o agendamento de procedimentos, otimizando o fluxo de trabalho da clínica e permitindo um atendimento 24/7 de alta qualidade.
 
-O projeto foi desenvolvido com a **ajuda de IAs** (Gemini e Claude) após meu encerramento do primeiro período (Sistemas de Informação - UFV), com o objetivo de facilitar o dia a dia da empresa (Marisa Soares Estética e Saúde) de forma **voluntária**.
+---
 
-## ✨ Funcionalidades
+## 👨‍💻 Sobre o Desenvolvedor
+Olá! Meu nome é **MARIA CECÍLIA**. Sou estudante de **Sistemas de Informação na Universidade Federal de Viçosa (UFV)**. Este projeto foi desenvolvido voluntariamente logo após o encerramento do meu primeiro período, motivado pelo desejo de aplicar conceitos de lógica de programação para resolver problemas reais e impactar positivamente o negócio da clínica.
 
-*   **Atendimento Automatizado:** Respostas rápidas baseadas em IA (Groq).
-*   **Integração com Google Sheets:** Sincronização em tempo real da agenda da clínica.
-*   **Lógica de Agendamento:** Validação automática de blocos de tempo (15 min) e regras de negócio para procedimentos.
-*   **Gestão Inteligente:** Filtros para mensagens de Status, lógica de *debounce* (acumulo de mensagens para evitar respostas picadas) e memória de conversa.
-*   **Resiliência:** Reconexão automática ao WhatsApp e tratamento de erros.
+### O papel da IA no desenvolvimento
+Este projeto foi construído com o auxílio de ferramentas de IA (Gemini e Claude). Entendo o uso de IAs como uma ferramenta fundamental para o desenvolvedor moderno, utilizando-as para acelerar a curva de aprendizado, estruturar a arquitetura e resolver desafios de *debugging* e mantendo sempre o controle total.
 
-## 🚀 Como instalar
+---
 
-1. **Clone o repositório:**
+## 🚀 O Projeto
+
+O bot atua como um sistema de triagem e agendamento que se integra diretamente ao Google Sheets. Ele não apenas responde, mas **raciocina**: entende a intenção do cliente, valida a disponibilidade de horários, verifica se há blocos consecutivos suficientes para o procedimento e finaliza o agendamento automaticamente.
+
+### ✨ Funcionalidades Principais
+*   **Atendimento Automatizado:** Utilização da API Groq para processamento de linguagem natural, garantindo respostas empáticas e objetivas.
+*   **Integração com Google Sheets:** Sincronização em tempo real da agenda da clínica (via API do Google).
+*   **Gestão de Memória:** O bot mantém um histórico de conversa para oferecer continuidade, mas com limite para otimização de performance.
+*   **Debounce Inteligente:** O sistema aguarda o acúmulo de mensagens para processar o contexto completo, evitando respostas picadas e melhorando a experiência do usuário.
+*   **Segurança e Resiliência:** Tratamento de erros robusto, reconexão automática e proteção de dados sensíveis.
+
+---
+
+## 🛠 Tecnologias Utilizadas
+
+*   **Linguagem:** JavaScript (Node.js)
+*   **Biblioteca WhatsApp:** [Baileys](https://github.com/WhiskeySockets/Baileys)
+*   **Inteligência Artificial:** [Groq Cloud](https://groq.com/)
+*   **Banco de Dados:** Google Sheets API v4
+*   **Ambiente:** Windows/Linux (Node runtime)
+
+---
+
+## ⚙️ Como Instalar e Rodar
+
+1. **Pré-requisitos:**
+   - [Node.js](https://nodejs.org/) (versão LTS recomendada)
+   - Conta no Google Cloud (para a API do Sheets)
+   - Chave de API do [Groq](https://console.groq.com/)
+
+2. **Clonando o repositório:**
    ```bash
    git clone [https://github.com/SEU_USUARIO/bot-clinica-nova.git](https://github.com/SEU_USUARIO/bot-clinica-nova.git)
    cd bot-clinica-nova
