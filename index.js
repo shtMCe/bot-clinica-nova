@@ -21,7 +21,6 @@ const messageQueues = new Map();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // === CONFIGURAÇÃO MENSAL DE DATAS DE LASER ===
-// ATUALIZE ISSO TODO MÊS PARA A IA SABER O CALENDÁRIO ITINERANTE
 const DATAS_LASER_MES = "Neste mês, o Laser será dia 10 em Patrocínio, dia 15 em Patos de Minas e dia 20 em Guimarânia.";
 
 // CONFIGURAÇÕES VIA ENV
@@ -67,46 +66,78 @@ async function getSheetsClient() {
     return sheetsClient;
 }
 
-async function obterHorarios() {
+// ============================================================================
+// NOVAS FUNÇÕES AUXILIARES (JS responsável por identificar cidade)
+// ============================================================================
+
+// Identifica menção de cidade na string recebida ignorando acentos e maiúsculas
+function identificarCidade(texto) {
+    if (!texto) return null;
+    const txtNormalizado = texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    
+    if (txtNormalizado.includes('patrocinio')) return 'Patrocínio';
+    if (txtNormalizado.includes('patos')) return 'Patos de Minas';
+    if (txtNormalizado.includes('guimarania')) return 'Guimarânia';
+    
+    return null;
+}
+
+// Vasculha a mensagem atual e o histórico recente para reter a cidade escolhida
+function buscarCidadeNoHistorico(jid, textoUsuario) {
+    let cidade = identificarCidade(textoUsuario);
+    if (cidade) return cidade;
+
+    const historico = historicoConversas.get(jid) || [];
+    // Busca de trás para frente no histórico para pegar a cidade mais recente mencionada
+    for (let i = historico.length - 1; i >= 0; i--) {
+        if (historico[i].role === 'user') {
+            cidade = identificarCidade(historico[i].content);
+            if (cidade) return cidade;
+        }
+    }
+    return null;
+}
+
+// ============================================================================
+// FUNÇÃO ALTERADA: Retorna apenas estrutura JSON e filtra a cidade requerida
+// ============================================================================
+async function obterHorarios(cidadeEscolhida) {
+    // Se não há cidade identificada, retorna um alerta interno para o Grok não oferecer nada
+    if (!cidadeEscolhida) {
+        return '{"aviso": "[SISTEMA: O JavaScript ainda não identificou a cidade. Não invente horários. Continue conversando e pergunte em qual cidade ela deseja atendimento.]"}';
+    }
+
     try {
         const sheets = await getSheetsClient();
         const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${NOME_ABA}!A:F` });
         const rows = res.data.values || [];
 
-        const agendaAgrupada = {};
+        const agendaFiltrada = {};
 
         rows.forEach(r => {
             const dia = r[0]?.trim();
             const hora = r[1]?.trim();
             const status = r[2]?.toLowerCase().trim();
-            const cidade = r[5]?.trim() || 'Não informada';
+            const cidadePlanilha = r[5]?.trim() || 'Não informada';
 
-            if (status === 'disponível' && dia && hora) {
-                if (!agendaAgrupada[cidade]) agendaAgrupada[cidade] = {};
-                if (!agendaAgrupada[cidade][dia]) agendaAgrupada[cidade][dia] = [];
-                agendaAgrupada[cidade][dia].push(hora);
+            // JS filtra estritamente por "disponível" e pela cidade detectada
+            if (status === 'disponível' && dia && hora && cidadePlanilha.toLowerCase() === cidadeEscolhida.toLowerCase()) {
+                if (!agendaFiltrada[dia]) agendaFiltrada[dia] = [];
+                agendaFiltrada[dia].push(hora);
             }
         });
 
-        if (Object.keys(agendaAgrupada).length === 0) {
-            return "Nenhum horário disponível no momento.";
+        // Retorna alerta via JSON caso a cidade não tenha nenhum horário
+        if (Object.keys(agendaFiltrada).length === 0) {
+            return JSON.stringify({ aviso: `Não há horários disponíveis na planilha para ${cidadeEscolhida} no momento. Informe isso à cliente.` });
         }
 
-        let textoAgenda = "";
-        for (const cidade in agendaAgrupada) {
-            textoAgenda += `[CIDADE: ${cidade}]\n`;
-            for (const dia in agendaAgrupada[cidade]) {
-                const horarios = agendaAgrupada[cidade][dia].join(', ');
-                textoAgenda += `- Dia ${dia}: ${horarios}\n`;
-            }
-            textoAgenda += `\n`;
-        }
-
-        return textoAgenda.trim();
+        // Retorna a estrutura (JSON) puramente com os dias e horários livres
+        return JSON.stringify(agendaFiltrada, null, 2);
 
     } catch (e) {
         console.error("Erro ao obter horários:", e);
-        return "Agenda indisponível no momento.";
+        return '{"aviso": "Erro no sistema de planilha."}';
     }
 }
 
@@ -142,11 +173,10 @@ async function salvarAgendamento(dia, hora, procedimento, cliente, cidade, bloco
             );
 
             if (rowIndex === -1) {
-                // Quebrou a sequência, não há blocos consecutivos suficientes
                 return false; 
             }
             
-            linhasParaAtualizar.push(rowIndex + 1); // +1 porque a API é 1-based
+            linhasParaAtualizar.push(rowIndex + 1);
             horaAtual = adicionar15Minutos(horaAtual);
         }
 
@@ -174,7 +204,11 @@ function extrairTextoDaMensagem(message) {
 }
 
 async function gerarRespostaIA(jid, textoUsuario) {
-    const listaHorarios = await obterHorarios();
+    // JS identifica a cidade antes de buscar na planilha
+    const cidadeEscolhida = buscarCidadeNoHistorico(jid, textoUsuario);
+    // JS obtém exclusivamente o objeto JSON da cidade
+    const listaHorarios = await obterHorarios(cidadeEscolhida);
+
     const promptSistema = `Você é Ceci, assistente virtual da clínica "Estética Marisa Soares Estética e Saúde".
 Sua persona é acolhedora e simpática, mas seu funcionamento é EXTREMAMENTE OBJETIVO, RÁPIDO e DIRETO.
 
@@ -186,6 +220,7 @@ Sua persona é acolhedora e simpática, mas seu funcionamento é EXTREMAMENTE OB
 5. NEGRITO: Use *asteriscos* para destacar nomes de procedimentos, valores e cidades.
 6. GATILHO DE ENDEREÇO: Envie endereços apenas se a cliente solicitar explicitamente.
 7. MÚLTIPLAS MENSAGENS: Se a cliente enviar várias mensagens seguidas, avalie todo o conteúdo acumulado como um único contexto antes de responder.
+8. PROIBIÇÕES ESTRITAS: Você NÃO PODE inventar datas, horários, cidades, disponibilidades, lista de espera, encaixes ou cancelamentos. Use EXCLUSIVAMENTE o JSON de Horários Livres enviado abaixo. Deduzir horários não listados é estritamente proibido. Se não houver horários, informe que não há disponibilidade.
 
 [NOSSAS UNIDADES / ENDEREÇOS]
 - *Guimarânia - MG*: Praça Pedro Guimarães, número 3, Sala 2, segundo andar.
@@ -319,19 +354,18 @@ async function iniciarBot() {
             const msg = m.messages[0];
             if (!msg.message || msg.key.fromMe) return;
 
-            // === O FILTRO FOI ADICIONADO AQUI ===
             if (msg.key.remoteJid === 'status@broadcast') return;
 
             const jid = msg.key.remoteJid;
             const txt = extrairTextoDaMensagem(msg.message);
             if (!txt || !txt.trim()) return;
 
-            // Lógica de Debounce (Espera 2 minutos)
+            // Lógica de Debounce (Espera 20 segundos)
             if (messageTimers.has(jid)) clearTimeout(messageTimers.get(jid));
             if (!messageQueues.has(jid)) messageQueues.set(jid, []);
             messageQueues.get(jid).push(txt);
 
-            console.log(`📩 Mensagem de ${jid}: "${txt}". Aguardando 30 segundos para processar...`);
+            console.log(`📩 Mensagem de ${jid}: "${txt}". Aguardando processamento...`);
 
             const timer = setTimeout(async () => {
                 const mensagensAcumuladas = messageQueues.get(jid).join(' | ');
@@ -341,7 +375,7 @@ async function iniciarBot() {
                 console.log(`⏳ Processando contexto acumulado de ${jid}...`);
 
                 let resposta = await gerarRespostaIA(jid, mensagensAcumuladas);
-                console.log(`🤖 Resposta gerada: "${resposta}"`);
+                console.log(`🤖 Resposta gerada.`);
 
                 if (resposta.includes('[AGENDAR:')) {
                     const match = resposta.match(/\[AGENDAR:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|\]]+?)\s*\|\s*(\d+)\s*\]/i);
@@ -361,7 +395,7 @@ async function iniciarBot() {
                 atualizarHistorico(jid, "assistant", resposta);
                 await sock.sendMessage(jid, { text: resposta });
 
-            }, 30000); // 30.000ms = 30 segundos
+            }, 20000); // 20 segundos
 
             messageTimers.set(jid, timer);
 
