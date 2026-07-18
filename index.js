@@ -100,7 +100,7 @@ function buscarCidadeNoHistorico(jid, textoUsuario) {
 // ============================================================================
 async function obterHorarios(cidadeEscolhida) {
     if (!cidadeEscolhida) {
-        return '{"aviso": "[SISTEMA: O JavaScript ainda não identificou a cidade. Não invente horários. Continue conversando e pergunte em qual cidade ela deseja atendimento.]"}';
+        return '{"aviso": "[SISTEMA: O JavaScript ainda não identificou a cidade. Não invente horários, nem qualquer tipo de lista de espera ou fila. Continue conversando e pergunte em qual cidade ela deseja atendimento.]"}';
     }
 
     try {
@@ -150,7 +150,7 @@ async function obterHorarios(cidadeEscolhida) {
         // --------------------------------------
 
         if (Object.keys(agendaFiltrada).length === 0) {
-            return JSON.stringify({ aviso: `Não há horários disponíveis na planilha para ${cidadeEscolhida} no momento. Informe isso à cliente.` });
+            return JSON.stringify({ aviso: `Não há horários disponíveis na planilha para ${cidadeEscolhida} no momento. Informe isso à cliente com transparência. É PROIBIDO mencionar, sugerir ou inventar lista de espera, fila de espera ou aviso de vaga futura — esse recurso não existe na clínica.` });
         }
 
         return JSON.stringify(agendaFiltrada, null, 2);
@@ -234,12 +234,29 @@ function extrairTextoDaMensagem(message) {
     return conteudo.conversation || conteudo.extendedTextMessage?.text || conteudo.imageMessage?.caption || conteudo.videoMessage?.caption || null;
 }
 
+// === NOVO: Data e hora atuais (Brasília), recalculadas a cada chamada ===
+function obterDataHoraAtual() {
+    return new Intl.DateTimeFormat('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        weekday: 'long',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(new Date());
+}
+
 async function gerarRespostaIA(jid, textoUsuario) {
     const cidadeEscolhida = buscarCidadeNoHistorico(jid, textoUsuario);
     const listaHorarios = await obterHorarios(cidadeEscolhida);
+    const dataHoraAtual = obterDataHoraAtual();
 
     const promptSistema = `Você é Ceci, assistente virtual da clínica "Estética Marisa Soares Estética e Saúde".
 Sua persona é acolhedora e simpática, mas seu funcionamento é EXTREMAMENTE OBJETIVO, RÁPIDO e DIRETO.
+
+[DATA E HORA ATUAL - USE ISSO COMO ÚNICA REFERÊNCIA DE "HOJE"]
+Agora é: ${dataHoraAtual} (horário de Brasília). NUNCA calcule, presuma ou "lembre" a data por conta própria — use SEMPRE esta informação como a data e hora reais neste exato momento para decidir o que é "hoje", "amanhã" e a quais dias da semana correspondem as datas do calendário abaixo.
 
 [REGRAS DE COMPORTAMENTO E FORMATAÇÃO - OBRIGATÓRIAS]
 1. TAMANHO MÁXIMO: Nenhuma resposta pode ter mais de 2 parágrafos curtos.
@@ -284,6 +301,10 @@ Você deve seguir rigorosamente as regras abaixo antes de responder ao cliente o
   1. O cliente relata reação alérgica, queimadura ou problema médico grave.
   2. O cliente insiste agressivamente.
   3. O cliente pede um serviço ou parceria comercial que não existe na sua base de forma alguma.
+
+**4. PROIBIÇÃO ABSOLUTA E DEFINITIVA DE "LISTA DE ESPERA"**
+* A clínica NÃO possui, em nenhuma hipótese, lista de espera, fila de cancelamento, aviso automático de vaga futura ou qualquer mecanismo parecido. Esse recurso NÃO EXISTE e NUNCA existiu — em nenhuma circunstância você pode mencioná-lo, sugeri-lo, oferecê-lo ou inventá-lo, mesmo tentando parecer prestativa.
+* Quando o JSON de Horários Livres abaixo trouxer um campo "aviso" (por exemplo, informando que a cidade ainda não foi identificada ou que não há horário disponível), essa mensagem já é a resposta completa e correta para aquele momento da conversa. Comunicar essa ausência de horário à cliente de forma transparente NÃO é preguiça e NÃO é uma falha de autonomia — é a resposta certa. A falha real seria inventar uma alternativa (como lista de espera) que não existe.
 
 [TABELA DE PROCEDIMENTOS, TEMPO E VALORES]
 *Combos de Depilação a Laser:*
